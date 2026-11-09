@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Учёба</title>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF2F1;--card:#fff;--ink:#12263A;--mut:#5B6B79;--acc:#1F6FEB;--bad:#C8412B;--ok:#2E8B57;--line:#D5DEDC}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1A24;--card:#172635;--ink:#E6EEF3;--mut:#93A4B3;--acc:#5B9BFF;--bad:#FF7A63;--ok:#5CC48A;--line:#2A3D4F}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Onest,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{padding:16px 16px 0;max-width:760px;margin:auto}
+h1{margin:0 0 12px;font-size:28px;font-weight:800;letter-spacing:-.02em}
+nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+nav button{flex:none;border:1px solid var(--line);background:transparent;color:var(--mut);padding:8px 14px;border-radius:20px;font:inherit;cursor:pointer}
+nav button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+main{max-width:760px;margin:auto;padding:8px 16px 48px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+textarea{width:100%;min-height:70px}
+.grow{flex:1 1 140px}
+button.b{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.g{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.item{display:flex;gap:12px;align-items:flex-start}
+.item .t{flex:1;min-width:0}
+.chip{flex:none;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:19px;background:var(--bg)}
+.v5,.v4{color:var(--ok)}.v3{color:var(--acc)}.v2{color:var(--bad)}
+.mut{color:var(--mut);font-size:14px}
+.todo{color:var(--bad);font-size:14px}
+.bar{height:8px;border-radius:4px;background:var(--line);margin:6px 0}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--bad)}
+.out{white-space:pre-wrap;background:var(--bg);border-radius:8px;padding:10px;margin-top:8px;font-size:15px}
+.done{opacity:.55}
+h2{font-size:18px;margin:18px 0 4px}
+</style></head><body>
+<header><h1>Учёба</h1><nav id="nav"></nav></header>
+<main id="app"></main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+let S=null;
+try{S=JSON.parse(localStorage.getItem('uchyoba')||'null')}catch(e){}
+S=S||{subjects:['Математика','Русский язык','Кыргыз тили','Английский язык','История','Физика','Биология','География','Информатика'].map(n=>({id:uid(),name:n})),grades:[],abs:[],topics:[]};
+const save=()=>{try{localStorage.setItem('uchyoba',JSON.stringify(S))}catch(e){}};
+let tab='grades',edit=null,ai={};
+const tabs={grades:'Оценки',abs:'Пропуски',topics:'Темы',weak:'Слабые места',subj:'Предметы'};
+const sn=id=>(S.subjects.find(s=>s.id===id)||{name:'?'}).name;
+const opts=sel=>S.subjects.map(s=>`<option value="${s.id}"${s.id===sel?' selected':''}>${esc(s.name)}</option>`).join('');
+const fd=d=>d?d.split('-').reverse().join('.'):'без даты';
+const age=d=>d?Math.floor((Date.now()-new Date(d))/864e5):null;
+const byDate=(a,b)=>(a.date?1:0)-(b.date?1:0)||(b.date||'').localeCompare(a.date||'');
+
+function form(e){
+  const g=tab==='grades',t=tab==='topics';
+  return `<div class="box"><div class="row">
+  <select id="f_s" class="grow">${opts(e.sid)}</select>
+  ${g?`<select id="f_v">${[5,4,3,2].map(v=>`<option${v===e.v?' selected':''}>${v}</option>`).join('')}</select>`:''}
+  <input id="f_d" type="date" value="${esc(e.date)}" aria-label="Дата"></div>
+  <div class="row" style="margin-top:8px">${t?`<textarea id="f_n" placeholder="Что прошли на уроке?">${esc(e.text)}</textarea>`
+  :`<input id="f_n" class="grow" placeholder="${g?'За что оценка (можно позже)':'Причина (можно позже)'}" value="${esc(g?e.note:e.reason)}">`}
+  <button class="b" data-a="add">${edit?'Сохранить':'Добавить'}</button>${edit?'<button class="g" data-a="cancel">Отмена</button>':''}</div></div>`;
+}
+function view(){
+  if(tab==='subj')return subjView();
+  if(tab==='weak')return weakView();
+  const e=edit&&edit.tab===tab?S[tab].find(x=>x.id===edit.id)||{}:{};
+  const list=[...S[tab]].sort(byDate);
+  let h=(tab==='grades'?eduBox():'')+form(e)+(list.length?'':'<p class="mut">Пока пусто. Добавь первую запись выше.</p>');
+  for(const x of list){
+    const btn=`<button class="g" data-a="edit" data-i="${x.id}">Изменить</button> <button class="g" data-a="del" data-i="${x.id}">Удалить</button>`;
+    if(tab==='grades')h+=`<div class="box item"><div class="chip v${x.v}">${x.v}</div><div class="t"><b>${esc(sn(x.sid))}</b> <span class="mut">${fd(x.date)}</span><br>${x.note?esc(x.note):'<span class="todo">Допиши, за что оценка</span>'}<div style="margin-top:6px">${btn}</div></div></div>`;
+    if(tab==='abs')h+=`<div class="box item ${x.done?'done':''}"><div class="t"><b>${esc(sn(x.sid))}</b> <span class="mut">${fd(x.date)}</span><br>${x.reason?esc(x.reason):'<span class="mut">причина не указана</span>'}<div style="margin-top:6px"><button class="g" data-a="done" data-i="${x.id}">${x.done?'Вернуть в долги':'Тему нагнал'}</button> ${btn}</div></div></div>`;
+    if(tab==='topics'){const a=age(x.rev),stale=a===null||a>14;
+      h+=`<div class="box"><b>${esc(sn(x.sid))}</b> <span class="mut">${fd(x.date)}</span><div>${esc(x.text)}</div>
+      <div class="${stale?'todo':'mut'}">${x.rev?'Повторял '+fd(x.rev):'Ещё не повторял'}</div>
+      <div class="row" style="margin-top:8px"><button class="b" data-a="ai" data-k="note" data-i="${x.id}">Конспект</button><button class="b" data-a="ai" data-k="test" data-i="${x.id}">Тест</button><button class="b" data-a="ai" data-k="simple" data-i="${x.id}">Объясни проще</button><button class="g" data-a="rev" data-i="${x.id}">Повторил</button></div>
+      ${ai[x.id]?`<div class="out">${esc(ai[x.id])}</div>`:''}<div style="margin-top:8px">${btn}</div></div>`}
+  }
+  return h;
+}
+function weakView(){
+  const rows=S.subjects.map(s=>{
+    const gs=S.grades.filter(g=>g.sid===s.id),avg=gs.length?gs.reduce((a,g)=>a+g.v,0)/gs.length:null;
+    const low=gs.filter(g=>g.v<=3).length,ab=S.abs.filter(a=>a.sid===s.id&&!a.done).length;
+    const st=S.topics.filter(t=>t.sid===s.id&&(age(t.rev)===null||age(t.rev)>14)).length;
+    const score=(avg!==null&&avg<4.5?(4.5-avg)*2:0)+low+ab*1.5+st*.5,why=[];
+    if(avg!==null&&avg<4.5)why.push('средний балл '+avg.toFixed(1));
+    if(low)why.push('оценок 3 и ниже: '+low);
+    if(ab)why.push('не нагнано пропусков: '+ab);
+    if(st)why.push('давно не повторял тем: '+st);
+    return{s,score,why};
+  }).filter(r=>r.score>0).sort((a,b)=>b.score-a.score);
+  if(!rows.length)return '<p class="mut">Слабых мест пока нет. Добавь оценки, пропуски и темы, и здесь появятся подсказки.</p>';
+  const max=rows[0].score;
+  return rows.map(r=>`<div class="box"><b>${esc(r.s.name)}</b><div class="bar"><i style="width:${Math.round(r.score/max*100)}%"></i></div><div class="mut">${r.why.join(' · ')}</div></div>`).join('');
+}
+function subjView(){
+  return `<div class="box row"><input id="ns" class="grow" placeholder="Новый предмет"><button class="b" data-a="addsubj">Добавить</button></div>`+
+  S.subjects.map(s=>`<div class="box row"><span class="grow">${esc(s.name)}</span><button class="g" data-a="rs" data-i="${s.id}">Удалить</button></div>`).join('')+
+  `<h2>Резервная копия</h2><div class="row"><button class="g" data-a="exp">Скачать данные</button><button class="g" data-a="imp">Загрузить данные</button></div><input id="file" type="file" accept=".json" hidden>`;
+}
+function render(){
+  $('#nav').innerHTML=Object.entries(tabs).map(([k,v])=>`<button class="${k===tab?'on':''}" data-a="tab" data-i="${k}">${v}</button>`).join('');
+  $('#app').innerHTML=view();
+  const f=$('#file');if(f)f.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.subjects&&d.grades){S=d;save();render()}}catch(e){alert('Файл не подходит')}};r.readAsText(f.files[0])};
+}
+async function ask(k,id){
+  const t=S.topics.find(x=>x.id===id);ai[id]='Думаю…';render();
+  const call=async()=>fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json','x-pass':localStorage.getItem('uchyoba_pass')||''},body:JSON.stringify({task:k,subject:sn(t.sid),text:t.text})});
+  try{
+    let r=await call();
+    if(r.status===401){const p=prompt('Пароль приложения');if(p){localStorage.setItem('uchyoba_pass',p);r=await call()}}
+    const d=await r.json();ai[id]=r.ok?d.text:'Ошибка: '+(d.error||r.status);
+  }catch(e){ai[id]='Нет связи с сервером. Работает ли /api/ai?'}
+  render();
+}
+function eduBox(){
+  let sv={};try{sv=JSON.parse(localStorage.getItem('uchyoba_edu')||'{}')}catch(e){}
+  return `<div class="box"><b>Импорт из Edupage</b>
+  <div class="row" style="margin-top:8px"><input id="e_s" class="grow" placeholder="Школа (до .edupage.org)" value="${esc(sv.school)}" autocapitalize="off">
+  <input id="e_u" class="grow" placeholder="Логин" value="${esc(sv.user)}" autocapitalize="off">
+  <input id="e_p" class="grow" type="password" placeholder="Пароль" autocomplete="current-password"></div>
+  <div class="row" style="margin-top:8px"><button class="b" data-a="edu">Загрузить оценки</button><span id="imsg" class="mut"></span></div>
+  <div class="mut" style="margin-top:6px">Пароль нигде не сохраняется, он нужен только на время загрузки. Школа и логин запоминаются в этом браузере.</div></div>`;
+}
+async function importEdu(){
+  const msg=t=>{const m=$('#imsg');if(m)m.textContent=t};
+  const school=($('#e_s')||{}).value.trim(),user=($('#e_u')||{}).value.trim(),pass=($('#e_p')||{}).value;
+  if(!school||!user||!pass){msg('Заполни школу, логин и пароль');return}
+  try{localStorage.setItem('uchyoba_edu',JSON.stringify({school,user}))}catch(e){}
+  msg('Загружаю…');
+  const call=()=>fetch('/api/edupage',{method:'POST',headers:{'Content-Type':'application/json','x-pass':localStorage.getItem('uchyoba_pass')||''},body:JSON.stringify({school,user,pass})});
+  try{
+    let r=await call();
+    if(r.status===401){const p=prompt('Пароль приложения');if(p){localStorage.setItem('uchyoba_pass',p);r=await call()}}
+    const d=await r.json();
+    if(!r.ok){msg('Ошибка: '+(d.error||r.status));return}
+    let add=0,skip=0;
+    for(const g of d.grades){
+      const v=Math.round(Number(g.v));
+      if(!(v>=2&&v<=5)){skip++;continue}
+      let s=S.subjects.find(x=>x.name.toLowerCase()===(g.subject||'').toLowerCase());
+      if(!s){s={id:uid(),name:g.subject||'Без названия'};S.subjects.push(s)}
+      const key=g.eid||[g.subject,g.date,v,g.note].join('|');
+      if(S.grades.some(x=>x.eid===key))continue;
+      const same=S.grades.find(x=>!x.eid&&x.sid===s.id&&x.date===g.date&&x.v===v);
+      if(same){same.eid=key;if(!same.note)same.note=g.note;continue}
+      S.grades.push({id:uid(),sid:s.id,v,date:g.date,note:g.note,eid:key});add++;
+    }
+    save();render();
+    msg(`Добавлено: ${add}`+(skip?`, пропущено не-числовых: ${skip}`:''));
+  }catch(e){msg('Нет связи с /api/edupage')}
+}
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-a]');if(!b)return;
+  const a=b.dataset.a,i=b.dataset.i,val=id=>($('#'+id)||{}).value||'';
+  if(a==='tab'){tab=i;edit=null}
+  else if(a==='cancel')edit=null;
+  else if(a==='add'){
+    let o={sid:val('f_s'),date:val('f_d')};const n=val('f_n').trim();
+    if(tab==='grades'){o.v=+val('f_v');o.note=n}
+    if(tab==='abs')o.reason=n;
+    if(tab==='topics'){if(!n)return;o.text=n}
+    if(edit){Object.assign(S[tab].find(x=>x.id===edit.id),o);edit=null}
+    else S[tab].push({id:uid(),done:false,rev:'',...o});
+    save();
+  }
+  else if(a==='edit')edit={tab,id:i};
+  else if(a==='del'){if(confirm('Удалить запись?')){S[tab]=S[tab].filter(x=>x.id!==i);save()}}
+  else if(a==='done'){const x=S.abs.find(x=>x.id===i);x.done=!x.done;save()}
+  else if(a==='rev'){S.topics.find(x=>x.id===i).rev=new Date().toISOString().slice(0,10);save()}
+  else if(a==='ai'){ask(b.dataset.k,i);return}
+  else if(a==='edu'){importEdu();return}
+  else if(a==='addsubj'){const n=val('ns').trim();if(n){S.subjects.push({id:uid(),name:n});save()}}
+  else if(a==='rs'){if(confirm('Удалить предмет? Записи по нему останутся без названия.')){S.subjects=S.subjects.filter(x=>x.id!==i);save()}}
+  else if(a==='exp'){const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));l.download='uchyoba-backup.json';l.click()}
+  else if(a==='imp'){$('#file').click();return}
+  render();
+});
+render();
+</script></body></html>
