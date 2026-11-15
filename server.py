@@ -2,6 +2,7 @@
 # Ключ Groq можно положить в файл .env рядом (строка GROQ_API_KEY=...) или в переменную окружения.
 import json
 import os
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -27,9 +28,9 @@ def load(name):
     sys.exit("Не найден файл %s.py: положи его в папку api рядом с server.py" % name)
 
 
-ai, edupage, photo = load("ai"), load("edupage"), load("photo")
-
-ROUTES = {"/api/ai": ai.run, "/api/edupage": edupage.run, "/api/photo": photo.run}
+# Файл загружается заново на каждый запрос, чтобы правки кода применялись
+# без перезапуска сервера (локальная разработка; на Vercel код свежий при каждом деплое).
+ROUTES = {"/api/ai": "ai", "/api/edupage": "edupage", "/api/photo": "photo"}
 
 
 class H(BaseHTTPRequestHandler):
@@ -42,7 +43,10 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(out)
 
     def do_GET(self):
-        if self.path.split("?")[0] in ("/", "/index.html"):
+        path = self.path.split("?")[0]
+        if path == "/health":
+            return self._json(200, {"ok": True})
+        if path in ("/", "/index.html"):
             out = (ROOT / "index.html").read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -53,14 +57,19 @@ class H(BaseHTTPRequestHandler):
             self._json(404, {"error": "Не найдено"})
 
     def do_POST(self):
-        fn = ROUTES.get(self.path)
-        if not fn:
+        name = ROUTES.get(self.path)
+        if not name:
             return self._json(404, {"error": "Не найдено"})
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         except Exception:
             body = {}
-        self._json(*fn(self.headers, body))
+        try:
+            code, obj = load(name).run(self.headers, body)
+        except Exception as e:
+            traceback.print_exc()
+            code, obj = 500, {"error": "Ошибка сервера: %s" % type(e).__name__}
+        self._json(code, obj)
 
 
 if __name__ == "__main__":

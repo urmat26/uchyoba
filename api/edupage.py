@@ -100,6 +100,10 @@ def run(headers, body):
         return 502, {"error": "Для этого аккаунта включён двухфакторный вход, библиотека его не поддерживает"}
     try:
         grades, skip = read_grades(ep)
+        # Лог для отладки: видно, сколько оценок прочиталось и как они выглядят
+        print("Edupage: прочитано %d оценок, пропуски %s" % (len(grades), skip), flush=True)
+        for g in grades[:6]:
+            print("  пример: v=%r max=%r дата=%s предмет=%r заметка=%r" % (g["v"], g["max"], g["date"], g["subject"], g["note"]), flush=True)
         return 200, {"grades": grades, "skip": skip}
     except Exception as e:
         traceback.print_exc()
