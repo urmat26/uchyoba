@@ -1,2 +1,3 @@
 .env
 __pycache__/
+api/_last_grades.json
