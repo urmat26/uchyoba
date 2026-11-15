@@ -18,15 +18,19 @@ def read_grades(ep):
     data, _ = json.JSONDecoder().raw_decode(rest)
 
     events = ((data.get("vsetkyUdalosti") or {}).get("edupage")) or {}
-    names, out, bad = {}, [], 0
+    names, out = {}, []
+    # skip — сколько записей пропущено и по какой причине, чтобы можно было понять, что не импортировалось
+    skip = {"bad": 0, "no_subject": 0, "no_data": 0, "not_number": 0}
     for g in data.get("vsetkyZnamky") or []:
         try:
             eid = str(g.get("udalostid") or "")
             if not eid:
+                skip["bad"] += 1
                 continue
             det = events.get(eid) or {}
             pid = det.get("PredmetID")
             if pid is None or pid == "vsetky":
+                skip["no_subject"] += 1
                 continue
             if pid not in names:
                 try:
@@ -34,30 +38,46 @@ def read_grades(ep):
                     names[pid] = DbiHelper(ep).fetch_subject_name(int(pid)) or ""
                 except Exception:
                     names[pid] = ""
-            raw = (g.get("data") or "").split(" (", 1)
-            comment = raw[1].rsplit(")", 1)[0] if len(raw) > 1 else ""
-            mx = None
-            try:
-                t = str(det.get("p_typ_udalosti"))
-                if t == "2":
-                    mx = float(det.get("p_vaha"))
-                elif t == "3":
-                    mx = float(det.get("p_vaha_body"))
-            except Exception:
-                mx = None
-            m = re.search(r"Модуль\s*(\d)", json.dumps([det, g], ensure_ascii=False))
+            raw = (g.get("data") or "").strip()
+            if not raw:
+                skip["no_data"] += 1
+                continue
+            raw, _, tail = raw.partition(" (")
+            comment = tail.rsplit(")", 1)[0] if tail else ""
+            # Оценка бывает вида "0.44/1", "12", "12,5" — дробь "x/y" надёжнее всего,
+            # из неё берём и балл, и максимум. Иначе максимум ищем в данных события.
+            v, mx = None, None
+            m = re.match(r"^([\d.,]+)\s*/\s*([\d.,]+)$", raw.strip())
+            if m:
+                v = m.group(1).replace(",", ".")
+                mx = float(m.group(2).replace(",", "."))
+            else:
+                v = raw.strip().replace(",", ".")
+            if mx is None:
+                try:
+                    t = str(det.get("p_typ_udalosti"))
+                    if t == "2":
+                        mx = float(det.get("p_vaha"))
+                    elif t == "3":
+                        mx = float(det.get("p_vaha_body"))
+                except Exception:
+                    mx = None
+            if not re.match(r"^[\d.]+$", v):
+                skip["not_number"] += 1
+                continue
+            mm = re.search(r"Модуль\s*(\d)", json.dumps([det, g], ensure_ascii=False))
             out.append({
                 "eid": eid,
                 "subject": names[pid] or ("Предмет " + str(pid)),
-                "v": raw[0].strip().replace(",", "."),
+                "v": v,
                 "max": mx,
-                "mod": int(m.group(1)) if m else 0,
+                "mod": int(mm.group(1)) if mm else 0,
                 "date": str(g.get("datum") or "")[:10],
                 "note": det.get("p_meno") or comment or "",
             })
         except Exception:
-            bad += 1
-    return out, bad
+            skip["bad"] += 1
+    return out, skip
 
 
 def run(headers, body):
@@ -79,8 +99,8 @@ def run(headers, body):
     if two_factor is not None:
         return 502, {"error": "Для этого аккаунта включён двухфакторный вход, библиотека его не поддерживает"}
     try:
-        grades, bad = read_grades(ep)
-        return 200, {"grades": grades, "bad": bad}
+        grades, skip = read_grades(ep)
+        return 200, {"grades": grades, "skip": skip}
     except Exception as e:
         traceback.print_exc()
         return 502, {"error": "Не удалось прочитать оценки: %s: %s" % (type(e).__name__, str(e)[:200])}
