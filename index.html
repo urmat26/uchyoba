@@ -225,17 +225,18 @@ async function importEdu(){
     if(r.status===401){const p=prompt('Пароль приложения');if(p){localStorage.setItem('uchyoba_pass',p);r=await call()}}
     const d=await r.json();
     if(!r.ok){msg('Ошибка: '+(d.error||r.status));return}
-    let add=0,skip=0;
+    let add=0,skip=0;const seen=new Set();
     for(const g of d.grades){
       const v=parseFloat(g.v);
       if(isNaN(v)){skip++;continue}
       let s=S.subjects.find(x=>x.name.toLowerCase()===(g.subject||'').toLowerCase());
       if(!s){s={id:uid(),name:g.subject||'Без названия'};S.subjects.push(s)}
       const key=g.eid||[g.subject,g.date,v,g.note].join('|');
-      const ex=S.grades.find(x=>x.eid===key);if(ex){ex.max=ex.max||g.max||null;ex.mod=ex.mod||g.mod||0;continue}
+      const ex=S.grades.find(x=>x.eid===key);if(ex){ex.max=ex.max||g.max||null;ex.mod=ex.mod||g.mod||0;seen.add(key);continue}
       const same=S.grades.find(x=>!x.eid&&x.sid===s.id&&x.date===g.date&&x.v===v);
-      if(same){same.eid=key;same.max=same.max||g.max||null;same.mod=same.mod||g.mod||0;if(!same.note)same.note=g.note;continue}
+      if(same){same.eid=key;same.max=same.max||g.max||null;same.mod=same.mod||g.mod||0;if(!same.note)same.note=g.note;seen.add(key);continue}
       S.grades.push({id:uid(),sid:s.id,v,max:g.max||null,mod:g.mod||0,date:g.date,note:g.note,eid:key});add++;
+      seen.add(key);
     }
     save();render();
     const sk=d.skip||{},parts=[];
@@ -243,6 +244,8 @@ async function importEdu(){
     if(sk.no_subject)parts.push('без предмета: '+sk.no_subject);
     if(sk.no_data)parts.push('пустых: '+sk.no_data);
     if(sk.bad)parts.push('ошибок чтения: '+sk.bad);
+    const gone=S.grades.filter(x=>x.eid&&!seen.has(x.eid)).length;
+    if(gone)parts.push('не найдено в Edupage (возможно, удалены там): '+gone);
     msg(`Добавлено: ${add}`+(parts.length?' · '+parts.join(' · '):''));
   }catch(e){msg('Нет связи с /api/edupage')}
 }
