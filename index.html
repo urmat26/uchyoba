@@ -225,14 +225,27 @@ async function importEdu(){
     if(r.status===401){const p=prompt('Пароль приложения');if(p){localStorage.setItem('uchyoba_pass',p);r=await call()}}
     const d=await r.json();
     if(!r.ok){msg('Ошибка: '+(d.error||r.status));return}
-    let add=0,skip=0;const seen=new Set();
+    let add=0,upd=0,skip=0;const seen=new Set();
     for(const g of d.grades){
       const v=parseFloat(g.v);
       if(isNaN(v)){skip++;continue}
       let s=S.subjects.find(x=>x.name.toLowerCase()===(g.subject||'').toLowerCase());
       if(!s){s={id:uid(),name:g.subject||'Без названия'};S.subjects.push(s)}
       const key=g.eid||[g.subject,g.date,v,g.note].join('|');
-      const ex=S.grades.find(x=>x.eid===key);if(ex){ex.max=ex.max||g.max||null;ex.mod=ex.mod||g.mod||0;seen.add(key);continue}
+      const ex=S.grades.find(x=>x.eid===key);
+      if(ex){
+        // Оценка уже импортирована: Edupage — источник истины, обновляем значение,
+        // максимум и дату (учитель мог их изменить). Своё: модуль и заметка.
+        const was=ex.v+'/'+ex.max+' '+ex.date;
+        ex.v=v;
+        if(g.max!=null)ex.max=g.max;
+        if(g.date)ex.date=g.date;
+        ex.mod=ex.mod||g.mod||0;
+        if(!ex.note&&g.note)ex.note=g.note;
+        const now=ex.v+'/'+ex.max+' '+ex.date;
+        if(was!==now)upd++;
+        seen.add(key);continue
+      }
       const same=S.grades.find(x=>!x.eid&&x.sid===s.id&&x.date===g.date&&x.v===v);
       if(same){same.eid=key;same.max=same.max||g.max||null;same.mod=same.mod||g.mod||0;if(!same.note)same.note=g.note;seen.add(key);continue}
       S.grades.push({id:uid(),sid:s.id,v,max:g.max||null,mod:g.mod||0,date:g.date,note:g.note,eid:key});add++;
@@ -240,6 +253,7 @@ async function importEdu(){
     }
     save();render();
     const sk=d.skip||{},parts=[];
+    if(upd)parts.push('обновлено: '+upd);
     if(skip)parts.push('нечисловых: '+skip);
     if(sk.no_subject)parts.push('без предмета: '+sk.no_subject);
     if(sk.no_data)parts.push('пустых: '+sk.no_data);

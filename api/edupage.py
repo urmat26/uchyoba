@@ -6,6 +6,7 @@ import os
 import re
 import traceback
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 
 
 def read_grades(ep):
@@ -104,6 +105,12 @@ def run(headers, body):
         print("Edupage: прочитано %d оценок, пропуски %s" % (len(grades), skip), flush=True)
         for g in grades[:6]:
             print("  пример: v=%r max=%r дата=%s предмет=%r заметка=%r" % (g["v"], g["max"], g["date"], g["subject"], g["note"]), flush=True)
+        # Полная копия последнего импорта рядом с файлом (для отладки; на Vercel молча пропускается)
+        try:
+            (Path(__file__).parent / "_last_grades.json").write_text(
+                json.dumps(grades, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
         return 200, {"grades": grades, "skip": skip}
     except Exception as e:
         traceback.print_exc()
