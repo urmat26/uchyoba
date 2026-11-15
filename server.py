@@ -27,9 +27,9 @@ def load(name):
     sys.exit("Не найден файл %s.py: положи его в папку api рядом с server.py" % name)
 
 
-ai, edupage = load("ai"), load("edupage")
+ai, edupage, photo = load("ai"), load("edupage"), load("photo")
 
-ROUTES = {"/api/ai": ai.run, "/api/edupage": edupage.run}
+ROUTES = {"/api/ai": ai.run, "/api/edupage": edupage.run, "/api/photo": photo.run}
 
 
 class H(BaseHTTPRequestHandler):

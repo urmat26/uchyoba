@@ -1,1 +1,1 @@
-{"functions":{"api/edupage.py":{"maxDuration":30}}}
+{"functions":{"api/edupage.py":{"maxDuration":30},"api/photo.py":{"maxDuration":60}}}
